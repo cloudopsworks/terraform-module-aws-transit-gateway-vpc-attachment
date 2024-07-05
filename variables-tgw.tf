@@ -13,4 +13,5 @@ variable "vpc_attachments" {
 variable "transit_gateway_id" {
   description = "EC2 Transit Gateway identifier"
   type        = string
+  default = ""
 }
