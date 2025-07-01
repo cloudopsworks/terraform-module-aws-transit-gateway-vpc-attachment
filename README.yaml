@@ -11,81 +11,94 @@ copyrights:
 github_repo: cloudopsworks/terraform-module-aws-transit-gateway-vpc-attachment
 
 description: |-
-  This Terraform module, when used with Terragrunt, automates the creation and configuration of AWS Transit Gateway VPC attachments. It streamlines cross-region and cross-account networking by attaching one or more VPC subnets to an existing Transit Gateway (TGW).
+  This Terraform module, when used with Terragrunt, automates the creation and configuration of AWS Transit Gateway VPC attachments using YAML-based configuration. It streamlines cross-region and cross-account networking by managing multiple VPC attachments to Transit Gateways (TGW).
   #### Features
-  - Simplifies the creation of [AWS Transit Gateway VPC attachments](https://docs.aws.amazon.com/vpc/latest/tgw/tgw-vpc-attachments.html).
-  - Enables attaching multiple subnets in multiple Availability Zones to a specified Transit Gateway.
-  - Supports optional route propagation and association with Transit Gateway Route Tables.
-  - Adheres to straightforward naming and tagging strategies.
+  - Simplifies the creation of [AWS Transit Gateway VPC attachments](https://docs.aws.amazon.com/vpc/latest/tgw/tgw-vpc-attachments.html) using YAML configuration.
+  - Supports multiple VPC attachments with different configurations in a single deployment.
+  - Configurable DNS support, IPv6 support, and appliance mode support per attachment.
+  - Flexible route table association and propagation controls.
+  - Comprehensive tagging support with inheritance from organization-level tags.
 
 # Introduction to the project
 introduction: |-
   #### Architecture Overview
-  1. **Transit Gateway**: Accepts an existing TGW ID.
-  2. **VPC Subnets**: Maps subnets from your VPC to the Transit Gateway.
-  3. **Attachment Management**: Creates an `aws_ec2_transit_gateway_vpc_attachment` resource.
-  4. **Route Table Association/Propagation**: Optionally associates route tables with the attachment and propagates routes automatically.
+  1. **YAML Configuration**: Define VPC attachments using structured YAML format.
+  2. **Multiple Attachments**: Support for multiple VPC attachments with different settings.
+  3. **Flexible Options**: Configure DNS support, IPv6 support, and appliance mode per attachment.
+  4. **Route Management**: Control route table association and propagation per attachment.
   #### Prerequisites
   - A working AWS Transit Gateway in the target region.
-  - Existing VPC and subnets for the attachment.
-  - Terraform **0.13+** and Terragrunt installed.
+  - Existing VPC(s) and subnets for the attachment(s).
+  - Terraform **1.3+** and AWS provider **~> 5.0**.
   - AWS credentials configured (e.g., through AWS CLI or environment variables).
 
 # How to use this project
 usage: |-
   #### Usage with Terragrunt
-  Below is an example of how you might structure a Terragrunt configuration. Make sure you have Terragrunt installed and your folder structure set up appropriately.
+  Below is an example of how to structure a Terragrunt configuration using YAML-based attachments.
   ```hcl
   # terragrunt.hcl
   include {
     path = find_in_parent_folders()
   }
-    
+
   terraform {
     source = "git::https://github.com/cloudopsworks/terraform-module-aws-transit-gateway-vpc-attachment.git?ref=vX.Y.Z"
   }
-    
+
   inputs = {
-    # Required Inputs
-    name               = "example-tgw-attachment"
     transit_gateway_id = "tgw-0123456789abcdef0"
-    subnets            = ["subnet-12345", "subnet-67890"]
-  
-    # Optional Inputs
-    associate_route_table = true
-    propagate_route_table = false
-    route_table_ids       = ["tgw-rtb-12345678"]
-    tags = {
-    Environment = "dev"
-    Project     = "networking"
+    vpc_attachments = {
+      main = {
+        vpc_id     = "vpc-12345"
+        subnet_ids = ["subnet-12345", "subnet-67890"]
+        dns_support = true
+        ipv6_support = false
+        appliance_mode_support = false
+        transit_gateway_default_route_table_association = true
+        transit_gateway_default_route_table_propagation = true
+        tags = {
+          Environment = "dev"
+          Project     = "networking"
+        }
+      }
     }
   }
   ```
-  Make sure to replace `tgw-0123456789abcdef0`, `subnet-12345`, and other placeholder values with valid IDs from your environment.
+  Replace the placeholder values with valid IDs from your environment.
 
 # Example usage
 examples: |-
-  #### Alternate Example
+  #### Multiple VPC Attachments Example
   ``` hcl
   # terragrunt.hcl
   include {
     path = find_in_parent_folders()
   }
-    
+
   terraform {
     source = "git::https://github.com/cloudopsworks/terraform-module-aws-transit-gateway-vpc-attachment.git"
   }
-    
+
   inputs = {
-    name                 = "prod-attachment"
-    transit_gateway_id   = "tgw-abc123"
-    subnets              = ["subnet-abc111", "subnet-xyz222"]
-    associate_route_table = true
-    propagate_route_table = true
-    route_table_ids       = ["tgw-rtb-aaa111", "tgw-rtb-bbb222"]
-    tags = {
-    Application = "CustomerPortal"
-    Owner       = "ITOps"
+    transit_gateway_id = "tgw-abc123"
+    vpc_attachments = {
+      prod = {
+        vpc_id     = "vpc-prod111"
+        subnet_ids = ["subnet-abc111", "subnet-xyz222"]
+        tags = {
+          Environment = "production"
+        }
+      }
+      staging = {
+        vpc_id     = "vpc-stage222"
+        subnet_ids = ["subnet-def333"]
+        dns_support = false
+        ipv6_support = true
+        tags = {
+          Environment = "staging"
+        }
+      }
     }
   }
   ```
@@ -93,16 +106,29 @@ examples: |-
 # How to get started quickly
 quickstart: |-
   #### Getting Started (Terragrunt Workflow)
-  1. **Setup directory**: In your Terragrunt directory (e.g., `live` directory), create a subfolder (e.g., `transit-gateway-attachment`).
-  2. **Add terragrunt.hcl**: Paste in one of the usage examples above, updating the variables as needed.
-  3. **Run commands**:
-    - `terragrunt init` to initialize the backend and module source.
-    - `terragrunt plan` to see proposed changes.
-    - `terragrunt apply` to create the VPC attachment.
-  
-  #### Testing
-  - Validate your Terragrunt configuration: `terragrunt validate`.
-  - For advanced testing, consider integrating [Terratest](https://github.com/gruntwork-io/terratest) to automate tests around your configuration.
+  1. **Setup directory**: Create a new directory for your Transit Gateway configuration.
+  2. **Prepare YAML configuration**: Define your VPC attachments using the following structure:
+     ```yaml
+     vpc_attachments:
+       attachment_name:
+         vpc_id: vpc-id
+         subnet_ids: [subnet-id1, subnet-id2]
+         dns_support: true
+         ipv6_support: false
+         appliance_mode_support: false
+         tags:
+           Key: Value
+     ```
+  3. **Create terragrunt.hcl**: Use the configuration example from the usage section.
+  4. **Deploy**:
+     - `terragrunt init` to initialize the configuration
+     - `terragrunt plan` to review changes
+     - `terragrunt apply` to create attachments
+
+  #### Validation
+  - Use `terragrunt validate` to check configuration syntax
+  - Review the AWS Console to verify attachment status
+  - Check route table associations and propagation settings
 
 include:
   - "docs/targets.md"
