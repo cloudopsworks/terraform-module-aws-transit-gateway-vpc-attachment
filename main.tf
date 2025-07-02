@@ -32,3 +32,43 @@ resource "aws_ec2_transit_gateway_vpc_attachment" "this" {
     try(each.value.tags, {}),
   )
 }
+
+data "aws_network_interfaces" "this" {
+  for_each = merge([
+    for att_name, attachment in var.vpc_attachments : {
+      for sub in attachment.subnet_ids : "${att_name}-${sub}" => {
+        att_name  = att_name
+        subnet_id = sub
+      }
+    }
+  ]...)
+
+  filter {
+    name   = "interface-type"
+    values = ["transit_gateway"]
+  }
+
+  filter {
+    name   = "subnet-id"
+    values = [each.value.subnet_id]
+  }
+  depends_on = [aws_ec2_transit_gateway_vpc_attachment.this]
+}
+
+resource "aws_ec2_tag" "tgw_att_eni" {
+  for_each = merge(flatten([
+    for att_name, attachment in var.vpc_attachments : [
+      for sub in attachment.subnet_ids : {
+        for k, v in local.all_tags : "${att_name}-${sub}-${k}" => {
+          att_name  = att_name
+          subnet_id = sub
+          tag_key   = k
+          tag_value = v
+        }
+      }
+    ]
+  ])...)
+  resource_id = data.aws_network_interfaces.this[format("%s-%s", each.value.att_name, each.value.subnet_id)].ids[0]
+  key         = each.value.tag_key
+  value       = each.value.tag_value
+}
