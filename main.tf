@@ -59,7 +59,7 @@ resource "aws_ec2_tag" "tgw_att_eni" {
   for_each = merge(flatten([
     for att_name, attachment in var.vpc_attachments : [
       for sub in attachment.subnet_ids : {
-        for k, v in local.all_tags : "${att_name}-${sub}-${k}" => {
+        for k, v in merge(local.all_tags, { Name = format("tgw-att-%s", att_name) }) : "${att_name}-${sub}-${k}" => {
           att_name  = att_name
           subnet_id = sub
           tag_key   = k
