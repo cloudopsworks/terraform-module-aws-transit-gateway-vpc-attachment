@@ -8,35 +8,31 @@
   -->
 [![README Header][readme_header_img]][readme_header_link]
 
-[![cloudopsworks][logo]](https://cloudops.works/)
+[![cloudopsworks][logo]](https://cloudopsworks.co/)
 
 # Terraform AWS Transit Gateway VPC Attachment Module
 
+ [![Latest Release](https://img.shields.io/github/release/cloudopsworks/terraform-module-aws-transit-gateway-vpc-attachment.svg?style=for-the-badge)](https://github.com/cloudopsworks/terraform-module-aws-transit-gateway-vpc-attachment/releases/latest) [![Last Updated](https://img.shields.io/github/last-commit/cloudopsworks/terraform-module-aws-transit-gateway-vpc-attachment.svg?style=for-the-badge)](https://github.com/cloudopsworks/terraform-module-aws-transit-gateway-vpc-attachment/commits)
 
 
+Terraform module for creating AWS Transit Gateway VPC attachments from Terragrunt/YAML-driven configuration.
 
-This Terraform module, when used with Terragrunt, automates the creation and configuration of AWS Transit Gateway VPC attachments using YAML-based configuration. It streamlines cross-region and cross-account networking by managing multiple VPC attachments to Transit Gateways (TGW).
 #### Features
-- Simplifies the creation of [AWS Transit Gateway VPC attachments](https://docs.aws.amazon.com/vpc/latest/tgw/tgw-vpc-attachments.html) using YAML configuration.
-- Supports multiple VPC attachments with different configurations in a single deployment.
-- Configurable DNS support, IPv6 support, and appliance mode support per attachment.
-- Flexible route table association and propagation controls.
-- Comprehensive tagging support with inheritance from organization-level tags.
+- Creates one or more [AWS Transit Gateway VPC attachments](https://docs.aws.amazon.com/vpc/latest/tgw/tgw-vpc-attachments.html) from a keyed attachment map.
+- Supports a global Transit Gateway ID or per-attachment Transit Gateway IDs.
+- Configures DNS support, IPv6 support, appliance mode support, and default route table association/propagation per attachment.
+- Applies inherited organization tags plus attachment-specific tags to both the VPC attachment and its Transit Gateway network interfaces.
+- Exposes legacy attachment details plus attachment IDs keyed by logical attachment name.
 
 
 ---
 
 This project is part of our comprehensive approach towards DevOps Acceleration. 
 [<img align="right" title="Share via Email" width="24" height="24" src="https://docs.cloudops.works/images/ionicons/ios-mail.svg"/>][share_email]
-[<img align="right" title="Share on Google+" width="24" height="24" src="https://docs.cloudops.works/images/ionicons/logo-googleplus.svg" />][share_googleplus]
 [<img align="right" title="Share on Facebook" width="24" height="24" src="https://docs.cloudops.works/images/ionicons/logo-facebook.svg" />][share_facebook]
 [<img align="right" title="Share on Reddit" width="24" height="24" src="https://docs.cloudops.works/images/ionicons/logo-reddit.svg" />][share_reddit]
 [<img align="right" title="Share on LinkedIn" width="24" height="24" src="https://docs.cloudops.works/images/ionicons/logo-linkedin.svg" />][share_linkedin]
-[<img align="right" title="Share on Twitter" width="24" height="24" src="https://docs.cloudops.works/images/ionicons/logo-twitter.svg" />][share_twitter]
-
-
-[![Terraform Open Source Modules](https://docs.cloudops.works/images/terraform-open-source-modules.svg)][terraform_modules]
-
+[<img align="right" title="Share on X" width="24" height="24" src="https://docs.cloudops.works/images/ionicons/logo-twitter.svg" />][share_twitter]
 
 
 It's 100% Open Source and licensed under the [APACHE2](LICENSE).
@@ -56,16 +52,20 @@ We have [*lots of terraform modules*][terraform_modules] that are Open Source an
 
 ## Introduction
 
+This module is intended for Cloud Ops Works AWS landing-zone deployments that use Terragrunt scaffolding and YAML inputs. It attaches existing VPC subnets to an existing Transit Gateway and keeps attachment options explicit and repeatable across environments.
+
 #### Architecture Overview
-1. **YAML Configuration**: Define VPC attachments using structured YAML format.
-2. **Multiple Attachments**: Support for multiple VPC attachments with different settings.
-3. **Flexible Options**: Configure DNS support, IPv6 support, and appliance mode per attachment.
-4. **Route Management**: Control route table association and propagation per attachment.
+1. **Terragrunt scaffold** copies `inputs.yaml`, `terragrunt.hcl`, and `local-tags.json` into the deployment folder.
+2. **Dependency-aware generation** can build the attachment automatically from VPC and TGW dependency outputs.
+3. **Manual attachment map** remains available when dependencies are disabled or when multiple/custom attachments are required.
+4. **Tag propagation** applies common tags and attachment-specific tags to the attachment and the TGW-created ENIs.
+
 #### Prerequisites
-- A working AWS Transit Gateway in the target region.
-- Existing VPC(s) and subnets for the attachment(s).
-- Terraform **1.3+** and AWS provider **~> 5.0**.
-- AWS credentials configured (e.g., through AWS CLI or environment variables).
+- Terraform/OpenTofu compatible with Terraform `>= 1.3` syntax.
+- AWS provider `~> 5.0`.
+- An existing AWS Transit Gateway.
+- Existing VPC subnets in the same region as the Transit Gateway attachment.
+- AWS credentials with permissions to create `ec2:TransitGatewayVpcAttachment`, discover TGW ENIs, and tag EC2 resources.
 
 ## Usage
 
@@ -74,101 +74,201 @@ We have [*lots of terraform modules*][terraform_modules] that are Open Source an
 Instead pin to the release tag (e.g. `?ref=vX.Y.Z`) of one of our [latest releases](https://github.com/cloudopsworks/terraform-module-aws-transit-gateway-vpc-attachment/releases).
 
 
-#### Usage with Terragrunt
-Below is an example of how to structure a Terragrunt configuration using YAML-based attachments.
+#### Terragrunt scaffolding workflow
+
+```sh
+# 1. Create and enter the target deployment directory
+mkdir -p dev/us-east-1/network/transit-gateway-vpc-attachment
+cd dev/us-east-1/network/transit-gateway-vpc-attachment
+
+# 2. Scaffold the module (do NOT use --working-dir)
+terragrunt scaffold github.com/cloudopsworks/terraform-module-aws-transit-gateway-vpc-attachment
+
+# 3. Edit inputs.yaml with deployment-specific values
+#    (all keys and comments are pre-populated from .boilerplate/inputs.yaml)
+vi inputs.yaml
+
+# 4. Apply
+terragrunt apply
+```
+
+#### Generated `inputs.yaml`
+
+```yaml
+# Module configuration
+
+# Transit Gateway dependency and attachment defaults used by the scaffolded terragrunt.hcl.
+# When the VPC and TGW dependencies are enabled during scaffolding, terragrunt.hcl builds vpc_attachments from dependency outputs and these per-attachment defaults.
+
+dns_support: true # (Optional) Enable DNS support for the generated VPC attachment. Valid values: true, false. Default: true.
+ipv6_support: false # (Optional) Enable IPv6 support for the generated VPC attachment. Valid values: true, false. Default: false.
+appliance_mode_support: false # (Optional) Enable appliance mode support for stateful inspection appliances. Valid values: true, false. Default: false.
+transit_gateway_default_route_table_association: true # (Optional) Associate the generated attachment with the TGW default route table. Valid values: true, false. Default: true.
+transit_gateway_default_route_table_propagation: true # (Optional) Propagate generated attachment routes to the TGW default route table. Valid values: true, false. Default: true.
+tags: {} # (Optional) Additional tags applied to the generated attachment and TGW network interfaces. Default: {}.
+
+# Use this block when scaffolding without VPC/TGW dependencies, or as a reference for the module input shape.
+vpc_attachments: {} # (Optional) Map of VPC attachments keyed by logical name. Default: {}.
+# vpc_attachments:
+#   app: # (Required) Logical attachment name; used in Terraform resource keys and Name tags.
+#     vpc_id: "vpc-0123456789abcdef0" # (Required) Existing VPC identifier to attach.
+#     subnet_ids: # (Required) Existing subnet IDs from the VPC; use one subnet per Availability Zone that needs TGW connectivity.
+#       - "subnet-0123456789abcdef0"
+#       - "subnet-abcdef0123456789"
+#     transit_gateway_id: "tgw-0123456789abcdef0" # (Optional) Per-attachment TGW ID; required only when the top-level transit_gateway_id input is not provided. Default: null.
+#     dns_support: true # (Optional) Enable DNS support. Valid values: true, false. Default: true.
+#     ipv6_support: false # (Optional) Enable IPv6 support. Valid values: true, false. Default: false.
+#     appliance_mode_support: false # (Optional) Enable appliance mode support. Valid values: true, false. Default: false.
+#     transit_gateway_default_route_table_association: true # (Optional) Associate with the TGW default route table. Valid values: true, false. Default: true.
+#     transit_gateway_default_route_table_propagation: true # (Optional) Propagate routes to the TGW default route table. Valid values: true, false. Default: true.
+#     tags: {} # (Optional) Additional attachment and TGW ENI tags. Default: {}.
+
+transit_gateway_id: "" # (Optional) Default Transit Gateway ID for all VPC attachments. Leave empty when each attachment defines transit_gateway_id or when scaffold uses the TGW dependency. Default: "".
+```
+
+#### Generated `terragrunt.hcl` with default dependencies
+
 ```hcl
-# terragrunt.hcl
-include {
-  path = find_in_parent_folders()
+locals {
+  local_vars  = yamldecode(file("./inputs.yaml"))
+  spoke_vars  = yamldecode(file(find_in_parent_folders("spoke-inputs.yaml")))
+  region_vars = yamldecode(file(find_in_parent_folders("region-inputs.yaml")))
+  env_vars    = yamldecode(file(find_in_parent_folders("env-inputs.yaml")))
+  global_vars = yamldecode(file(find_in_parent_folders("global-inputs.yaml")))
+
+  local_tags  = jsondecode(file("./local-tags.json"))
+  spoke_tags  = jsondecode(file(find_in_parent_folders("spoke-tags.json")))
+  region_tags = jsondecode(file(find_in_parent_folders("region-tags.json")))
+  env_tags    = jsondecode(file(find_in_parent_folders("env-tags.json")))
+  global_tags = jsondecode(file(find_in_parent_folders("global-tags.json")))
+
+  tags = merge(
+    local.global_tags,
+    local.env_tags,
+    local.region_tags,
+    local.spoke_tags,
+    local.local_tags
+  )
+}
+
+include "root" {
+  path = find_in_parent_folders("root.hcl")
+}
+
+dependency "vpc" {
+  config_path = "../vpc"
+  mock_outputs_allowed_terraform_commands = ["validate", "destroy"]
+  mock_outputs = {
+    vpc_name          = "sample-vpc"
+    vpc_id            = "vpc-12345678901234"
+    flowlogs_role_arn = "arn:aws:iam::123456789012:role/flowlogs-role"
+    private_subnets = [
+      "subnet-01234567890123456",
+      "subnet-01234567890123457",
+      "subnet-01234567890123458",
+    ]
+    intra_subnets = [
+      "subnet-01234567890123456",
+      "subnet-01234567890123457",
+      "subnet-01234567890123458",
+    ]
+  }
+}
+
+dependency "tgw" {
+  config_path = "../tgw"
+  mock_outputs_allowed_terraform_commands = ["validate", "destroy"]
+  mock_outputs = {
+    transit_gateway_arn = "arn:aws:ec2:us-west-2:551110472991:transit-gateway/tgw-12345678901234"
+    transit_gateway_id  = "tgw-12345678901234"
+  }
 }
 
 terraform {
-  source = "git::https://github.com/cloudopsworks/terraform-module-aws-transit-gateway-vpc-attachment.git?ref=vX.Y.Z"
+  source = "github.com/cloudopsworks/terraform-module-aws-transit-gateway-vpc-attachment"
 }
 
 inputs = {
-  transit_gateway_id = "tgw-0123456789abcdef0"
+  is_hub    = false
+  org       = local.env_vars.org
+  spoke_def = local.spoke_vars.spoke
+
   vpc_attachments = {
-    main = {
-      vpc_id     = "vpc-12345"
-      subnet_ids = ["subnet-12345", "subnet-67890"]
-      dns_support = true
-      ipv6_support = false
-      appliance_mode_support = false
-      transit_gateway_default_route_table_association = true
-      transit_gateway_default_route_table_propagation = true
-      tags = {
-        Environment = "dev"
-        Project     = "networking"
-      }
+    (dependency.vpc.outputs.vpc_name) = {
+      vpc_id                                          = dependency.vpc.outputs.vpc_id
+      subnet_ids                                      = dependency.vpc.outputs.intra_subnets
+      dns_support                                     = try(local.local_vars.dns_support, true)
+      ipv6_support                                    = try(local.local_vars.ipv6_support, false)
+      appliance_mode_support                          = try(local.local_vars.appliance_mode_support, false)
+      transit_gateway_default_route_table_association = try(local.local_vars.transit_gateway_default_route_table_association, true)
+      transit_gateway_default_route_table_propagation = try(local.local_vars.transit_gateway_default_route_table_propagation, true)
+      tags                                            = try(local.local_vars.tags, {})
     }
   }
+  transit_gateway_id = dependency.tgw.outputs.transit_gateway_id
+  extra_tags         = local.tags
 }
 ```
-Replace the placeholder values with valid IDs from your environment.
 
 ## Quick Start
 
-#### Getting Started (Terragrunt Workflow)
-1. **Setup directory**: Create a new directory for your Transit Gateway configuration.
-2. **Prepare YAML configuration**: Define your VPC attachments using the following structure:
-   ```yaml
-   vpc_attachments:
-     attachment_name:
-       vpc_id: vpc-id
-       subnet_ids: [subnet-id1, subnet-id2]
-       dns_support: true
-       ipv6_support: false
-       appliance_mode_support: false
-       tags:
-         Key: Value
-   ```
-3. **Create terragrunt.hcl**: Use the configuration example from the usage section.
-4. **Deploy**:
-   - `terragrunt init` to initialize the configuration
-   - `terragrunt plan` to review changes
-   - `terragrunt apply` to create attachments
-
-#### Validation
-- Use `terragrunt validate` to check configuration syntax
-- Review the AWS Console to verify attachment status
-- Check route table associations and propagation settings
+1. Confirm the Transit Gateway and VPC subnets already exist in the target AWS region.
+2. Scaffold a deployment folder with `terragrunt scaffold github.com/cloudopsworks/terraform-module-aws-transit-gateway-vpc-attachment`.
+3. Keep the default VPC/TGW dependencies when attaching the current spoke VPC to the shared TGW, or scaffold with dependencies disabled and fill `vpc_attachments` manually.
+4. Run `terragrunt validate`, then `terragrunt plan`, and finally `terragrunt apply`.
+5. Review outputs `transit_gateway_attachments` and `transit_gateway_attachment_ids`, then confirm the TGW attachment reaches the AWS `available` state.
 
 
 ## Examples
 
-#### Multiple VPC Attachments Example
-``` hcl
-# terragrunt.hcl
-include {
-  path = find_in_parent_folders()
-}
+#### Manual multiple-attachment `inputs.yaml`
 
-terraform {
-  source = "git::https://github.com/cloudopsworks/terraform-module-aws-transit-gateway-vpc-attachment.git"
-}
+Use this style when dependencies are disabled at scaffold time or when one deployment must manage multiple attachments explicitly.
 
-inputs = {
-  transit_gateway_id = "tgw-abc123"
-  vpc_attachments = {
-    prod = {
-      vpc_id     = "vpc-prod111"
-      subnet_ids = ["subnet-abc111", "subnet-xyz222"]
-      tags = {
-        Environment = "production"
-      }
-    }
-    staging = {
-      vpc_id     = "vpc-stage222"
-      subnet_ids = ["subnet-def333"]
-      dns_support = false
-      ipv6_support = true
-      tags = {
-        Environment = "staging"
-      }
-    }
-  }
-}
+```yaml
+vpc_attachments:
+  app:
+    vpc_id: "vpc-0aaa1111bbbb2222c"
+    subnet_ids:
+      - "subnet-01111111111111111"
+      - "subnet-02222222222222222"
+    transit_gateway_id: "tgw-0123456789abcdef0"
+    dns_support: true
+    ipv6_support: false
+    appliance_mode_support: false
+    transit_gateway_default_route_table_association: true
+    transit_gateway_default_route_table_propagation: true
+    tags:
+      Workload: "app"
+      Environment: "dev"
+  shared:
+    vpc_id: "vpc-0ddd3333eeee4444f"
+    subnet_ids:
+      - "subnet-03333333333333333"
+      - "subnet-04444444444444444"
+    transit_gateway_id: "tgw-0123456789abcdef0"
+    dns_support: true
+    ipv6_support: true
+    appliance_mode_support: true
+    tags:
+      Workload: "inspection"
+      Environment: "dev"
+
+transit_gateway_id: "" # Optional because each attachment sets transit_gateway_id above.
+```
+
+#### Single TGW for all attachments
+
+```yaml
+transit_gateway_id: "tgw-0123456789abcdef0"
+vpc_attachments:
+  app:
+    vpc_id: "vpc-0aaa1111bbbb2222c"
+    subnet_ids:
+      - "subnet-01111111111111111"
+      - "subnet-02222222222222222"
+    tags:
+      Workload: "app"
 ```
 
 
@@ -180,6 +280,7 @@ Available targets:
   help                                Help screen
   help/all                            Display help for all targets
   help/short                          This help short screen
+  init/%                              Initialize the project for a specific cloud provider: %S
   lint                                Lint terraform/opentofu code
   tag                                 Tag the current version
 
@@ -207,7 +308,9 @@ Available targets:
 
 | Name | Type |
 |------|------|
+| [aws_ec2_tag.tgw_att_eni](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/ec2_tag) | resource |
 | [aws_ec2_transit_gateway_vpc_attachment.this](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/ec2_transit_gateway_vpc_attachment) | resource |
+| [aws_network_interfaces.this](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/network_interfaces) | data source |
 | [aws_region.current](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/region) | data source |
 
 ## Inputs
@@ -218,14 +321,15 @@ Available targets:
 | <a name="input_is_hub"></a> [is\_hub](#input\_is\_hub) | Establish this is a HUB or spoke configuration | `bool` | `false` | no |
 | <a name="input_org"></a> [org](#input\_org) | n/a | <pre>object({<br/>    organization_name = string<br/>    organization_unit = string<br/>    environment_type  = string<br/>    environment_name  = string<br/>  })</pre> | n/a | yes |
 | <a name="input_spoke_def"></a> [spoke\_def](#input\_spoke\_def) | n/a | `string` | `"001"` | no |
-| <a name="input_transit_gateway_id"></a> [transit\_gateway\_id](#input\_transit\_gateway\_id) | EC2 Transit Gateway identifier | `string` | `""` | no |
-| <a name="input_vpc_attachments"></a> [vpc\_attachments](#input\_vpc\_attachments) | Maps of maps of VPC details to attach to TGW. Type 'any' to disable type validation by Terraform. | `any` | `{}` | no |
+| <a name="input_transit_gateway_id"></a> [transit\_gateway\_id](#input\_transit\_gateway\_id) | Default EC2 Transit Gateway identifier for all VPC attachments. Leave empty only when every vpc\_attachments entry defines transit\_gateway\_id. | `string` | `""` | no |
+| <a name="input_vpc_attachments"></a> [vpc\_attachments](#input\_vpc\_attachments) | Map of Transit Gateway VPC attachments keyed by logical attachment name. Each value configures the VPC, subnets, optional per-attachment TGW ID, feature flags, route table behavior, and tags. | <pre>map(object({<br/>    vpc_id                                          = string<br/>    subnet_ids                                      = list(string)<br/>    transit_gateway_id                              = optional(string)<br/>    dns_support                                     = optional(bool, true)<br/>    ipv6_support                                    = optional(bool, false)<br/>    appliance_mode_support                          = optional(bool, false)<br/>    transit_gateway_default_route_table_association = optional(bool, true)<br/>    transit_gateway_default_route_table_propagation = optional(bool, true)<br/>    tags                                            = optional(map(string), {})<br/>  }))</pre> | `{}` | no |
 
 ## Outputs
 
 | Name | Description |
 |------|-------------|
-| <a name="output_transit_gateway_attachments"></a> [transit\_gateway\_attachments](#output\_transit\_gateway\_attachments) | n/a |
+| <a name="output_transit_gateway_attachment_ids"></a> [transit\_gateway\_attachment\_ids](#output\_transit\_gateway\_attachment\_ids) | Transit Gateway VPC attachment IDs keyed by attachment name. |
+| <a name="output_transit_gateway_attachments"></a> [transit\_gateway\_attachments](#output\_transit\_gateway\_attachments) | Transit Gateway VPC attachment details. Preserves the legacy list shape for backward compatibility. |
 
 
 
@@ -235,10 +339,9 @@ Available targets:
 
 File a GitHub [issue](https://github.com/cloudopsworks/terraform-module-aws-transit-gateway-vpc-attachment/issues), send us an [email][email] or join our [Slack Community][slack].
 
-[![README Commercial Support][readme_commercial_support_img]][readme_commercial_support_link]
 
 ## DevOps Tools
-
+[]()
 ## Slack Community
 
 
@@ -259,7 +362,7 @@ Please use the [issue tracker](https://github.com/cloudopsworks/terraform-module
 
 ## Copyrights
 
-Copyright © 2024-2025 [Cloud Ops Works LLC](https://cloudops.works)
+Copyright © 2021-2026 [Cloud Ops Works LLC](https://cloudops.works)
 
 
 
@@ -316,32 +419,31 @@ This project is maintained by [Cloud Ops Works LLC][website].
 [![README Footer][readme_footer_img]][readme_footer_link]
 [![Beacon][beacon]][website]
 
-  [logo]: https://cloudops.works/logo-300x69.svg
-  [docs]: https://cowk.io/docs?utm_source=github&utm_medium=readme&utm_campaign=cloudopsworks/terraform-module-aws-transit-gateway-vpc-attachment&utm_content=docs
-  [website]: https://cowk.io/homepage?utm_source=github&utm_medium=readme&utm_campaign=cloudopsworks/terraform-module-aws-transit-gateway-vpc-attachment&utm_content=website
-  [github]: https://cowk.io/github?utm_source=github&utm_medium=readme&utm_campaign=cloudopsworks/terraform-module-aws-transit-gateway-vpc-attachment&utm_content=github
-  [jobs]: https://cowk.io/jobs?utm_source=github&utm_medium=readme&utm_campaign=cloudopsworks/terraform-module-aws-transit-gateway-vpc-attachment&utm_content=jobs
-  [hire]: https://cowk.io/hire?utm_source=github&utm_medium=readme&utm_campaign=cloudopsworks/terraform-module-aws-transit-gateway-vpc-attachment&utm_content=hire
-  [slack]: https://cowk.io/slack?utm_source=github&utm_medium=readme&utm_campaign=cloudopsworks/terraform-module-aws-transit-gateway-vpc-attachment&utm_content=slack
-  [linkedin]: https://cowk.io/linkedin?utm_source=github&utm_medium=readme&utm_campaign=cloudopsworks/terraform-module-aws-transit-gateway-vpc-attachment&utm_content=linkedin
-  [twitter]: https://cowk.io/twitter?utm_source=github&utm_medium=readme&utm_campaign=cloudopsworks/terraform-module-aws-transit-gateway-vpc-attachment&utm_content=twitter
-  [testimonial]: https://cowk.io/leave-testimonial?utm_source=github&utm_medium=readme&utm_campaign=cloudopsworks/terraform-module-aws-transit-gateway-vpc-attachment&utm_content=testimonial
-  [office_hours]: https://cloudops.works/office-hours?utm_source=github&utm_medium=readme&utm_campaign=cloudopsworks/terraform-module-aws-transit-gateway-vpc-attachment&utm_content=office_hours
-  [newsletter]: https://cowk.io/newsletter?utm_source=github&utm_medium=readme&utm_campaign=cloudopsworks/terraform-module-aws-transit-gateway-vpc-attachment&utm_content=newsletter
-  [email]: https://cowk.io/email?utm_source=github&utm_medium=readme&utm_campaign=cloudopsworks/terraform-module-aws-transit-gateway-vpc-attachment&utm_content=email
-  [commercial_support]: https://cowk.io/commercial-support?utm_source=github&utm_medium=readme&utm_campaign=cloudopsworks/terraform-module-aws-transit-gateway-vpc-attachment&utm_content=commercial_support
-  [we_love_open_source]: https://cowk.io/we-love-open-source?utm_source=github&utm_medium=readme&utm_campaign=cloudopsworks/terraform-module-aws-transit-gateway-vpc-attachment&utm_content=we_love_open_source
-  [terraform_modules]: https://cowk.io/terraform-modules?utm_source=github&utm_medium=readme&utm_campaign=cloudopsworks/terraform-module-aws-transit-gateway-vpc-attachment&utm_content=terraform_modules
-  [readme_header_img]: https://cloudops.works/readme/header/img
-  [readme_header_link]: https://cloudops.works/readme/header/link?utm_source=github&utm_medium=readme&utm_campaign=cloudopsworks/terraform-module-aws-transit-gateway-vpc-attachment&utm_content=readme_header_link
-  [readme_footer_img]: https://cloudops.works/readme/footer/img
-  [readme_footer_link]: https://cloudops.works/readme/footer/link?utm_source=github&utm_medium=readme&utm_campaign=cloudopsworks/terraform-module-aws-transit-gateway-vpc-attachment&utm_content=readme_footer_link
-  [readme_commercial_support_img]: https://cloudops.works/readme/commercial-support/img
-  [readme_commercial_support_link]: https://cloudops.works/readme/commercial-support/link?utm_source=github&utm_medium=readme&utm_campaign=cloudopsworks/terraform-module-aws-transit-gateway-vpc-attachment&utm_content=readme_commercial_support_link
-  [share_twitter]: https://twitter.com/intent/tweet/?text=Terraform+AWS+Transit+Gateway+VPC+Attachment+Module&url=https://github.com/cloudopsworks/terraform-module-aws-transit-gateway-vpc-attachment
+  [logo]: https://cloudopsworks.co/images/main-logo.png
+  [docs]: https://cloudopsworks.co/resources?utm_source=github&utm_medium=readme&utm_campaign=cloudopsworks/terraform-module-aws-transit-gateway-vpc-attachment&utm_content=docs
+  [website]: https://cloudopsworks.co?utm_source=github&utm_medium=readme&utm_campaign=cloudopsworks/terraform-module-aws-transit-gateway-vpc-attachment&utm_content=website
+  [github]: https://cloudopsworks.co/github?utm_source=github&utm_medium=readme&utm_campaign=cloudopsworks/terraform-module-aws-transit-gateway-vpc-attachment&utm_content=github
+  [jobs]: https://cloudopsworks.co/jobs?utm_source=github&utm_medium=readme&utm_campaign=cloudopsworks/terraform-module-aws-transit-gateway-vpc-attachment&utm_content=jobs
+  [hire]: https://cloudopsworks.co/hire?utm_source=github&utm_medium=readme&utm_campaign=cloudopsworks/terraform-module-aws-transit-gateway-vpc-attachment&utm_content=hire
+  [slack]: https://cloudopsworks.co/slack?utm_source=github&utm_medium=readme&utm_campaign=cloudopsworks/terraform-module-aws-transit-gateway-vpc-attachment&utm_content=slack
+  [linkedin]: https://cloudopsworks.co/linkedin?utm_source=github&utm_medium=readme&utm_campaign=cloudopsworks/terraform-module-aws-transit-gateway-vpc-attachment&utm_content=linkedin
+  [x]: https://cloudopsworks.co/x?utm_source=github&utm_medium=readme&utm_campaign=cloudopsworks/terraform-module-aws-transit-gateway-vpc-attachment&utm_content=x
+  [testimonial]: https://cloudopsworks.co/case-studies?utm_source=github&utm_medium=readme&utm_campaign=cloudopsworks/terraform-module-aws-transit-gateway-vpc-attachment&utm_content=testimonial
+  [office_hours]: https://cloudopsworks.co/office-hours?utm_source=github&utm_medium=readme&utm_campaign=cloudopsworks/terraform-module-aws-transit-gateway-vpc-attachment&utm_content=office_hours
+  [newsletter]: https://cloudopsworks.co/resources?utm_source=github&utm_medium=readme&utm_campaign=cloudopsworks/terraform-module-aws-transit-gateway-vpc-attachment&utm_content=newsletter
+  [email]: https://cloudopsworks.co/contact?utm_source=github&utm_medium=readme&utm_campaign=cloudopsworks/terraform-module-aws-transit-gateway-vpc-attachment&utm_content=email
+  [commercial_support]: https://cloudopsworks.co/services?utm_source=github&utm_medium=readme&utm_campaign=cloudopsworks/terraform-module-aws-transit-gateway-vpc-attachment&utm_content=commercial_support
+  [we_love_open_source]: https://cloudopsworks.co/open-source?utm_source=github&utm_medium=readme&utm_campaign=cloudopsworks/terraform-module-aws-transit-gateway-vpc-attachment&utm_content=we_love_open_source
+  [terraform_modules]: https://cloudopsworks.co/open-source?utm_source=github&utm_medium=readme&utm_campaign=cloudopsworks/terraform-module-aws-transit-gateway-vpc-attachment&utm_content=terraform_modules
+  [readme_header_img]: https://cloudopsworks.co/images/readme-header.png
+  [readme_header_link]: https://cloudopsworks.co/readme/header/link?utm_source=github&utm_medium=readme&utm_campaign=cloudopsworks/terraform-module-aws-transit-gateway-vpc-attachment&utm_content=readme_header_link
+  [readme_footer_img]: https://cloudopsworks.co/images/main-logo-footer.png
+  [readme_footer_link]: https://cloudopsworks.co/readme/footer/link?utm_source=github&utm_medium=readme&utm_campaign=cloudopsworks/terraform-module-aws-transit-gateway-vpc-attachment&utm_content=readme_footer_link
+  [readme_commercial_support_img]: https://cloudopsworks.co/readme/commercial-support/img
+  [readme_commercial_support_link]: https://cloudopsworks.co/readme/commercial-support/link?utm_source=github&utm_medium=readme&utm_campaign=cloudopsworks/terraform-module-aws-transit-gateway-vpc-attachment&utm_content=readme_commercial_support_link
+  [share_twitter]: https://x.com/intent/tweet/?text=Terraform+AWS+Transit+Gateway+VPC+Attachment+Module&url=https://github.com/cloudopsworks/terraform-module-aws-transit-gateway-vpc-attachment
   [share_linkedin]: https://www.linkedin.com/shareArticle?mini=true&title=Terraform+AWS+Transit+Gateway+VPC+Attachment+Module&url=https://github.com/cloudopsworks/terraform-module-aws-transit-gateway-vpc-attachment
   [share_reddit]: https://reddit.com/submit/?url=https://github.com/cloudopsworks/terraform-module-aws-transit-gateway-vpc-attachment
   [share_facebook]: https://facebook.com/sharer/sharer.php?u=https://github.com/cloudopsworks/terraform-module-aws-transit-gateway-vpc-attachment
-  [share_googleplus]: https://plus.google.com/share?url=https://github.com/cloudopsworks/terraform-module-aws-transit-gateway-vpc-attachment
   [share_email]: mailto:?subject=Terraform+AWS+Transit+Gateway+VPC+Attachment+Module&body=https://github.com/cloudopsworks/terraform-module-aws-transit-gateway-vpc-attachment
-  [beacon]: https://ga-beacon.cloudops.works/G-7XWMFVFXZT/cloudopsworks/terraform-module-aws-transit-gateway-vpc-attachment?pixel&cs=github&cm=readme&an=terraform-module-aws-transit-gateway-vpc-attachment
+  [beacon]: https://ga-beacon.cloudospworks.co/G-QMZVYYN2VN/cloudopsworks/terraform-module-aws-transit-gateway-vpc-attachment?pixel&cs=github&cm=readme&an=terraform-module-aws-transit-gateway-vpc-attachment

@@ -1,12 +1,11 @@
 ##
-# (c) 2021-2025
+# (c) 2021-2026
 #     Cloud Ops Works LLC - https://cloudops.works/
 #     Find us on:
 #       GitHub: https://github.com/cloudopsworks
 #       WebSite: https://cloudops.works
 #     Distributed Under Apache v2.0 License
 #
-
 ################################################################################
 # VPC Attachment
 ################################################################################
@@ -17,6 +16,13 @@ resource "aws_ec2_transit_gateway_vpc_attachment" "this" {
   transit_gateway_id = var.transit_gateway_id != "" ? var.transit_gateway_id : each.value.transit_gateway_id
   vpc_id             = each.value.vpc_id
   subnet_ids         = each.value.subnet_ids
+
+  lifecycle {
+    precondition {
+      condition     = var.transit_gateway_id != "" || try(length(trimspace(each.value.transit_gateway_id)) > 0, false)
+      error_message = "Set transit_gateway_id globally or provide transit_gateway_id for each VPC attachment."
+    }
+  }
 
   dns_support                                     = try(each.value.dns_support, true) ? "enable" : "disable"
   ipv6_support                                    = try(each.value.ipv6_support, false) ? "enable" : "disable"
@@ -59,7 +65,11 @@ resource "aws_ec2_tag" "tgw_att_eni" {
   for_each = merge(flatten([
     for att_name, attachment in var.vpc_attachments : [
       for sub in attachment.subnet_ids : {
-        for k, v in merge(local.all_tags, { Name = format("tgw-att-%s", att_name) }) : "${att_name}-${sub}-${k}" => {
+        for k, v in merge(
+          local.all_tags,
+          { Name = format("tgw-att-%s", att_name) },
+          try(attachment.tags, {}),
+          ) : "${att_name}-${sub}-${k}" => {
           att_name  = att_name
           subnet_id = sub
           tag_key   = k

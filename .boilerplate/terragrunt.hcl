@@ -30,6 +30,7 @@ dependency "vpc" {
   # module hasn't been applied yet.
   mock_outputs_allowed_terraform_commands = ["validate", "destroy"]
   mock_outputs = {
+    vpc_name          = "sample-vpc"
     vpc_id            = "vpc-12345678901234"
     flowlogs_role_arn = "arn:aws:iam::123456789012:role/flowlogs-role"
     private_subnets = [

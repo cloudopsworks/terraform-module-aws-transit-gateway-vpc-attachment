@@ -1,1 +1,29 @@
 # Module configuration
+
+# Transit Gateway dependency and attachment defaults used by the scaffolded terragrunt.hcl.
+# When the VPC and TGW dependencies are enabled during scaffolding, terragrunt.hcl builds vpc_attachments from dependency outputs and these per-attachment defaults.
+
+dns_support: true # (Optional) Enable DNS support for the generated VPC attachment. Valid values: true, false. Default: true.
+ipv6_support: false # (Optional) Enable IPv6 support for the generated VPC attachment. Valid values: true, false. Default: false.
+appliance_mode_support: false # (Optional) Enable appliance mode support for stateful inspection appliances. Valid values: true, false. Default: false.
+transit_gateway_default_route_table_association: true # (Optional) Associate the generated attachment with the TGW default route table. Valid values: true, false. Default: true.
+transit_gateway_default_route_table_propagation: true # (Optional) Propagate generated attachment routes to the TGW default route table. Valid values: true, false. Default: true.
+tags: {} # (Optional) Additional tags applied to the generated attachment and TGW network interfaces. Default: {}.
+
+# Use this block when scaffolding without VPC/TGW dependencies, or as a reference for the module input shape.
+vpc_attachments: {} # (Optional) Map of VPC attachments keyed by logical name. Default: {}.
+# vpc_attachments:
+#   app: # (Required) Logical attachment name; used in Terraform resource keys and Name tags.
+#     vpc_id: "vpc-0123456789abcdef0" # (Required) Existing VPC identifier to attach.
+#     subnet_ids: # (Required) Existing subnet IDs from the VPC; use one subnet per Availability Zone that needs TGW connectivity.
+#       - "subnet-0123456789abcdef0"
+#       - "subnet-abcdef0123456789"
+#     transit_gateway_id: "tgw-0123456789abcdef0" # (Optional) Per-attachment TGW ID; required only when the top-level transit_gateway_id input is not provided. Default: null.
+#     dns_support: true # (Optional) Enable DNS support. Valid values: true, false. Default: true.
+#     ipv6_support: false # (Optional) Enable IPv6 support. Valid values: true, false. Default: false.
+#     appliance_mode_support: false # (Optional) Enable appliance mode support. Valid values: true, false. Default: false.
+#     transit_gateway_default_route_table_association: true # (Optional) Associate with the TGW default route table. Valid values: true, false. Default: true.
+#     transit_gateway_default_route_table_propagation: true # (Optional) Propagate routes to the TGW default route table. Valid values: true, false. Default: true.
+#     tags: {} # (Optional) Additional attachment and TGW ENI tags. Default: {}.
+
+transit_gateway_id: "" # (Optional) Default Transit Gateway ID for all VPC attachments. Leave empty when each attachment defines transit_gateway_id or when scaffold uses the TGW dependency. Default: "".
