@@ -39,7 +39,7 @@ variables:
     description: "VPC Subnets scope, required if vpc_enabled is true, options: private, intra"
     type: enum
     default: intra
-    allowed_values:
+    options:
       - private
       - intra
     confirm: true
